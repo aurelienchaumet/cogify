@@ -30,6 +30,7 @@ Conversion d'un GeoTIFF en Cloud Optimized GeoTIFF (COG), avec interface graphiq
 
 ```
 conda activate cogify
+cd app
 python cogify.py <input.tif> [output_cog.tif] --compression JPEG --quality 90
 ```
 

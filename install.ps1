@@ -116,7 +116,7 @@ $form.Add_Shown({
         Set-Status "Creation de l'environnement Cogify..." "Installation de Python, GDAL et Streamlit (plusieurs minutes)."
         $job = Start-Job -ScriptBlock {
             param($condaBat, $here)
-            cmd.exe /c "`"$condaBat`" env create -f `"$here\environment.yml`" --solver=libmamba --force"
+            cmd.exe /c "`"$condaBat`" env create -f `"$here\app\environment.yml`" --solver=libmamba --force"
         } -ArgumentList $condaBat, $here
         Wait-Job-Responsive $job | Out-Null
         $envFailed = $job.State -eq "Failed"
@@ -129,8 +129,8 @@ $form.Add_Shown({
         Set-Status "Creation du raccourci sur le bureau..."
         $WshShell = New-Object -ComObject WScript.Shell
         $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Cogify.lnk")
-        $Shortcut.TargetPath = Join-Path $here "lancer_cogify.vbs"
-        $Shortcut.WorkingDirectory = $here
+        $Shortcut.TargetPath = Join-Path $here "app\lancer_cogify.vbs"
+        $Shortcut.WorkingDirectory = (Join-Path $here "app")
         $Shortcut.IconLocation = "imageres.dll,87"
         $Shortcut.Save()
 
@@ -145,5 +145,6 @@ $form.Add_Shown({
 })
 
 [void]$form.ShowDialog()
+
 
 

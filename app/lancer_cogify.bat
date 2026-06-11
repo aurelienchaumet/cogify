@@ -10,7 +10,7 @@ if exist "%ProgramData%\miniconda3\condabin\conda.bat" (
 ) else if exist "%USERPROFILE%\Anaconda3\condabin\conda.bat" (
     call "%USERPROFILE%\Anaconda3\condabin\conda.bat" activate cogify
 ) else (
-    echo [Cogify] Conda introuvable. Lancez install.bat d'abord.
+    echo [Cogify] Conda introuvable. Lancez install.bat ^(a la racine du dossier^) d'abord.
     pause
     exit /b 1
 )
