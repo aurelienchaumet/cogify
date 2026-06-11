@@ -8,7 +8,7 @@ Set-Location $here
 # --- Fenêtre ---
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Installation de Cogify"
-$form.Size = New-Object System.Drawing.Size(480, 230)
+$form.Size = New-Object System.Drawing.Size(520, 270)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
@@ -18,14 +18,14 @@ $form.TopMost = $true
 $label = New-Object System.Windows.Forms.Label
 $label.Text = "Initialisation..."
 $label.AutoSize = $false
-$label.Size = New-Object System.Drawing.Size(420, 40)
+$label.Size = New-Object System.Drawing.Size(460, 40)
 $label.Location = New-Object System.Drawing.Point(20, 20)
 $form.Controls.Add($label)
 
 $progress = New-Object System.Windows.Forms.ProgressBar
 $progress.Style = "Marquee"
 $progress.MarqueeAnimationSpeed = 30
-$progress.Size = New-Object System.Drawing.Size(420, 25)
+$progress.Size = New-Object System.Drawing.Size(460, 25)
 $progress.Location = New-Object System.Drawing.Point(20, 70)
 $form.Controls.Add($progress)
 
@@ -33,7 +33,7 @@ $detail = New-Object System.Windows.Forms.Label
 $detail.Text = ""
 $detail.AutoSize = $false
 $detail.ForeColor = [System.Drawing.Color]::Gray
-$detail.Size = New-Object System.Drawing.Size(420, 70)
+$detail.Size = New-Object System.Drawing.Size(460, 100)
 $detail.Location = New-Object System.Drawing.Point(20, 105)
 $form.Controls.Add($detail)
 
@@ -50,11 +50,24 @@ function Show-Error($msg) {
     exit 1
 }
 
-# Exécute un script en arrière-plan tout en gardant la fenêtre réactive
-function Wait-Job-Responsive($job) {
+# Exécute un script en arrière-plan tout en gardant la fenêtre réactive,
+# et affiche le temps écoulé / la dernière ligne d'un fichier de log
+function Wait-Job-Responsive($job, $baseText = "", $logFile = $null) {
+    $start = Get-Date
     while ($job.State -eq "Running") {
-        Start-Sleep -Milliseconds 150
+        Start-Sleep -Milliseconds 200
         [System.Windows.Forms.Application]::DoEvents()
+
+        if ($baseText) {
+            $elapsed = [int]((Get-Date) - $start).TotalSeconds
+            $line = ""
+            if ($logFile -and (Test-Path $logFile)) {
+                $lastLine = Get-Content -Path $logFile -Tail 1 -ErrorAction SilentlyContinue
+                if ($lastLine) { $line = "`n$lastLine" }
+            }
+            $detail.Text = "$baseText (ecoule : ${elapsed}s)$line"
+            $form.Refresh()
+        }
     }
     return Receive-Job -Job $job -ErrorAction SilentlyContinue
 }
@@ -130,7 +143,7 @@ $form.Add_Shown({
                 param($installer, $targetDir)
                 Start-Process -FilePath $installer -ArgumentList "/InstallationType=JustMe /AddToPath=0 /RegisterPython=0 /S /D=$targetDir" -Wait
             } -ArgumentList $installer, $targetDir
-            Wait-Job-Responsive $job | Out-Null
+            Wait-Job-Responsive $job "Installation de Miniconda en cours, merci de patienter" | Out-Null
             Remove-Job -Job $job -ErrorAction SilentlyContinue
             Remove-Item $installer -Force -ErrorAction SilentlyContinue
 
@@ -142,24 +155,50 @@ $form.Add_Shown({
 
         # --- 2. Installation du solveur libmamba (resolution de dependances bien plus rapide) ---
         Set-Status "Preparation de Conda..." "Installation du solveur rapide (libmamba)."
+        $logFile = "$env:TEMP\cogify_install_libmamba.log"
+        Remove-Item $logFile -Force -ErrorAction SilentlyContinue
         $job = Start-Job -ScriptBlock {
-            param($condaBat)
-            cmd.exe /c "`"$condaBat`" install -n base -y conda-libmamba-solver"
-        } -ArgumentList $condaBat
-        Wait-Job-Responsive $job | Out-Null
+            param($condaBat, $logFile)
+            cmd.exe /c "`"$condaBat`" install -n base -y conda-libmamba-solver > `"$logFile`" 2>&1"
+        } -ArgumentList $condaBat, $logFile
+        Wait-Job-Responsive $job "Installation du solveur rapide (libmamba)" $logFile | Out-Null
+        Remove-Job -Job $job -ErrorAction SilentlyContinue
+
+        # --- 2bis. Acceptation des conditions d'utilisation des canaux par defaut ---
+        Set-Status "Preparation de Conda..." "Acceptation des conditions d'utilisation des canaux Anaconda."
+        $logFile = "$env:TEMP\cogify_install_tos.log"
+        Remove-Item $logFile -Force -ErrorAction SilentlyContinue
+        $job = Start-Job -ScriptBlock {
+            param($condaBat, $logFile)
+            $channels = @(
+                "https://repo.anaconda.com/pkgs/main",
+                "https://repo.anaconda.com/pkgs/r",
+                "https://repo.anaconda.com/pkgs/msys2"
+            )
+            foreach ($c in $channels) {
+                cmd.exe /c "`"$condaBat`" tos accept --override-channels --channel $c >> `"$logFile`" 2>&1"
+            }
+        } -ArgumentList $condaBat, $logFile
+        Wait-Job-Responsive $job "Acceptation des conditions d'utilisation" $logFile | Out-Null
         Remove-Job -Job $job -ErrorAction SilentlyContinue
 
         # --- 3. Création de l'environnement conda ---
         Set-Status "Creation de l'environnement Cogify..." "Installation de Python, GDAL et Streamlit (plusieurs minutes)."
+        $logFile = "$env:TEMP\cogify_install_env.log"
+        Remove-Item $logFile -Force -ErrorAction SilentlyContinue
         $job = Start-Job -ScriptBlock {
-            param($condaBat, $here)
-            cmd.exe /c "`"$condaBat`" env create -f `"$here\app\environment.yml`" --solver=libmamba --force"
-        } -ArgumentList $condaBat, $here
-        Wait-Job-Responsive $job | Out-Null
-        $envFailed = $job.State -eq "Failed"
+            param($condaBat, $here, $logFile)
+            cmd.exe /c "`"$condaBat`" env remove -n cogify -y >> `"$logFile`" 2>&1 & `"$condaBat`" env create -f `"$here\app\environment.yml`" --solver=libmamba >> `"$logFile`" 2>&1"
+        } -ArgumentList $condaBat, $here, $logFile
+        Wait-Job-Responsive $job "Installation de Python, GDAL et Streamlit (plusieurs minutes)" $logFile | Out-Null
         Remove-Job -Job $job -ErrorAction SilentlyContinue
+
+        $condaRoot = Split-Path -Parent (Split-Path -Parent $condaBat)
+        $envFailed = -not (Test-Path "$condaRoot\envs\cogify\python.exe")
         if ($envFailed) {
-            Show-Error "Erreur lors de la creation de l'environnement conda."
+            $lastLines = ""
+            if (Test-Path $logFile) { $lastLines = (Get-Content -Path $logFile -Tail 15 -ErrorAction SilentlyContinue) -join "`n" }
+            Show-Error "Erreur lors de la creation de l'environnement conda.`n`n$lastLines"
         }
 
         # --- 4. Création du raccourci ---
@@ -182,6 +221,9 @@ $form.Add_Shown({
 })
 
 [void]$form.ShowDialog()
+
+
+
 
 
 
