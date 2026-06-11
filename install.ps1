@@ -103,11 +103,20 @@ $form.Add_Shown({
             }
         }
 
-        # --- 2. Création de l'environnement conda ---
+        # --- 2. Installation du solveur libmamba (resolution de dependances bien plus rapide) ---
+        Set-Status "Preparation de Conda..." "Installation du solveur rapide (libmamba)."
+        $job = Start-Job -ScriptBlock {
+            param($condaBat)
+            cmd.exe /c "`"$condaBat`" install -n base -y conda-libmamba-solver"
+        } -ArgumentList $condaBat
+        Wait-Job-Responsive $job | Out-Null
+        Remove-Job -Job $job -ErrorAction SilentlyContinue
+
+        # --- 3. Création de l'environnement conda ---
         Set-Status "Creation de l'environnement Cogify..." "Installation de Python, GDAL et Streamlit (plusieurs minutes)."
         $job = Start-Job -ScriptBlock {
             param($condaBat, $here)
-            cmd.exe /c "`"$condaBat`" env create -f `"$here\environment.yml`" --force"
+            cmd.exe /c "`"$condaBat`" env create -f `"$here\environment.yml`" --solver=libmamba --force"
         } -ArgumentList $condaBat, $here
         Wait-Job-Responsive $job | Out-Null
         $envFailed = $job.State -eq "Failed"
@@ -116,7 +125,7 @@ $form.Add_Shown({
             Show-Error "Erreur lors de la creation de l'environnement conda."
         }
 
-        # --- 3. Création du raccourci ---
+        # --- 4. Création du raccourci ---
         Set-Status "Creation du raccourci sur le bureau..."
         $WshShell = New-Object -ComObject WScript.Shell
         $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Cogify.lnk")
@@ -136,4 +145,5 @@ $form.Add_Shown({
 })
 
 [void]$form.ShowDialog()
+
 
