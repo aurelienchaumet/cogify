@@ -81,6 +81,7 @@ $form.Add_Shown({
             $uri = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe"
 
             $webClient = New-Object System.Net.WebClient
+            $webClient.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
             $downloadComplete = $false
             $downloadError = $null
 
@@ -181,6 +182,7 @@ $form.Add_Shown({
 })
 
 [void]$form.ShowDialog()
+
 
 
 
