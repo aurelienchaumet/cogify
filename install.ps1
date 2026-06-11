@@ -8,7 +8,7 @@ Set-Location $here
 # --- Fenêtre ---
 $form = New-Object System.Windows.Forms.Form
 $form.Text = "Installation de Cogify"
-$form.Size = New-Object System.Drawing.Size(460, 200)
+$form.Size = New-Object System.Drawing.Size(480, 230)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
 $form.MaximizeBox = $false
@@ -33,7 +33,7 @@ $detail = New-Object System.Windows.Forms.Label
 $detail.Text = ""
 $detail.AutoSize = $false
 $detail.ForeColor = [System.Drawing.Color]::Gray
-$detail.Size = New-Object System.Drawing.Size(420, 40)
+$detail.Size = New-Object System.Drawing.Size(420, 70)
 $detail.Location = New-Object System.Drawing.Point(20, 105)
 $form.Controls.Add($detail)
 
@@ -63,7 +63,8 @@ $form.Add_Shown({
         $condaBat = $condaPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
 
         if (-not $condaBat) {
-            Set-Status "Téléchargement de Miniconda..." "Cela peut prendre quelques minutes."
+            Set-Status "Conda n'est pas installé sur cette machine." "Cogify a besoin de Conda pour installer GDAL (lecture/ecriture des fichiers geo). Telechargement de Miniconda en cours..."
+            Start-Sleep -Seconds 2
             $installer = "$env:TEMP\miniconda_installer.exe"
             try {
                 Invoke-WebRequest -UseBasicParsing -Uri "https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe" -OutFile $installer
@@ -71,7 +72,7 @@ $form.Add_Shown({
                 Show-Error "Le telechargement de Miniconda a echoue.`nVerifiez votre connexion internet.`n`n$_"
             }
 
-            Set-Status "Installation de Miniconda..." "Installation silencieuse en cours."
+            Set-Status "Installation de Miniconda..." "Installation silencieuse de Miniconda (gestionnaire d'environnements Python) dans $env:USERPROFILE\miniconda3."
             $targetDir = "$env:USERPROFILE\miniconda3"
             Start-Process -FilePath $installer -ArgumentList "/InstallationType=JustMe /AddToPath=0 /RegisterPython=0 /S /D=$targetDir" -Wait
             Remove-Item $installer -Force -ErrorAction SilentlyContinue
