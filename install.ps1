@@ -1,4 +1,4 @@
-# Installateur graphique pour Cogify
+﻿# Installateur graphique pour Cogify
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
@@ -50,6 +50,15 @@ function Show-Error($msg) {
     exit 1
 }
 
+# Exécute un script en arrière-plan tout en gardant la fenêtre réactive
+function Wait-Job-Responsive($job) {
+    while ($job.State -eq "Running") {
+        Start-Sleep -Milliseconds 150
+        [System.Windows.Forms.Application]::DoEvents()
+    }
+    return Receive-Job -Job $job -ErrorAction SilentlyContinue
+}
+
 $form.Add_Shown({
     try {
         # --- 1. Recherche de conda existant ---
@@ -63,18 +72,29 @@ $form.Add_Shown({
         $condaBat = $condaPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
 
         if (-not $condaBat) {
-            Set-Status "Conda n'est pas installé sur cette machine." "Cogify a besoin de Conda pour installer GDAL (lecture/ecriture des fichiers geo). Telechargement de Miniconda en cours..."
-            Start-Sleep -Seconds 2
+            Set-Status "Conda n'est pas installe sur cette machine." "Cogify a besoin de Conda pour installer GDAL (lecture/ecriture des fichiers geo). Telechargement de Miniconda en cours..."
+
             $installer = "$env:TEMP\miniconda_installer.exe"
-            try {
+            $job = Start-Job -ScriptBlock {
+                param($installer)
                 Invoke-WebRequest -UseBasicParsing -Uri "https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe" -OutFile $installer
-            } catch {
-                Show-Error "Le telechargement de Miniconda a echoue.`nVerifiez votre connexion internet.`n`n$_"
+            } -ArgumentList $installer
+            Wait-Job-Responsive $job | Out-Null
+            $jobFailed = $job.State -eq "Failed"
+            Remove-Job -Job $job -ErrorAction SilentlyContinue
+
+            if ($jobFailed -or -not (Test-Path $installer)) {
+                Show-Error "Le telechargement de Miniconda a echoue.`nVerifiez votre connexion internet."
             }
 
             Set-Status "Installation de Miniconda..." "Installation silencieuse de Miniconda (gestionnaire d'environnements Python) dans $env:USERPROFILE\miniconda3."
             $targetDir = "$env:USERPROFILE\miniconda3"
-            Start-Process -FilePath $installer -ArgumentList "/InstallationType=JustMe /AddToPath=0 /RegisterPython=0 /S /D=$targetDir" -Wait
+            $job = Start-Job -ScriptBlock {
+                param($installer, $targetDir)
+                Start-Process -FilePath $installer -ArgumentList "/InstallationType=JustMe /AddToPath=0 /RegisterPython=0 /S /D=$targetDir" -Wait
+            } -ArgumentList $installer, $targetDir
+            Wait-Job-Responsive $job | Out-Null
+            Remove-Job -Job $job -ErrorAction SilentlyContinue
             Remove-Item $installer -Force -ErrorAction SilentlyContinue
 
             $condaBat = "$targetDir\condabin\conda.bat"
@@ -84,14 +104,20 @@ $form.Add_Shown({
         }
 
         # --- 2. Création de l'environnement conda ---
-        Set-Status "Création de l'environnement Cogify..." "Installation de Python, GDAL et Streamlit (plusieurs minutes)."
-        $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"`"$condaBat`" env create -f environment.yml --force`"" -Wait -PassThru -WindowStyle Hidden
-        if ($proc.ExitCode -ne 0) {
-            Show-Error "Erreur lors de la creation de l'environnement conda (code $($proc.ExitCode))."
+        Set-Status "Creation de l'environnement Cogify..." "Installation de Python, GDAL et Streamlit (plusieurs minutes)."
+        $job = Start-Job -ScriptBlock {
+            param($condaBat, $here)
+            cmd.exe /c "`"$condaBat`" env create -f `"$here\environment.yml`" --force"
+        } -ArgumentList $condaBat, $here
+        Wait-Job-Responsive $job | Out-Null
+        $envFailed = $job.State -eq "Failed"
+        Remove-Job -Job $job -ErrorAction SilentlyContinue
+        if ($envFailed) {
+            Show-Error "Erreur lors de la creation de l'environnement conda."
         }
 
         # --- 3. Création du raccourci ---
-        Set-Status "Création du raccourci sur le bureau..."
+        Set-Status "Creation du raccourci sur le bureau..."
         $WshShell = New-Object -ComObject WScript.Shell
         $Shortcut = $WshShell.CreateShortcut("$env:USERPROFILE\Desktop\Cogify.lnk")
         $Shortcut.TargetPath = Join-Path $here "lancer_cogify.vbs"
@@ -101,7 +127,7 @@ $form.Add_Shown({
 
         $progress.Style = "Continuous"
         $progress.Value = 100
-        Set-Status "Installation terminée !" "Lancez 'Cogify' depuis le bureau."
+        Set-Status "Installation terminee !" "Lancez 'Cogify' depuis le bureau."
         [System.Windows.Forms.MessageBox]::Show("Installation terminee avec succes !`n`nLancez 'Cogify' depuis le raccourci sur le bureau.", "Cogify", "OK", "Information") | Out-Null
     } catch {
         Show-Error "Erreur inattendue :`n$_"
@@ -110,3 +136,4 @@ $form.Add_Shown({
 })
 
 [void]$form.ShowDialog()
+
