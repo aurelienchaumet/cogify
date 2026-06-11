@@ -72,19 +72,55 @@ $form.Add_Shown({
         $condaBat = $condaPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
 
         if (-not $condaBat) {
-            Set-Status "Conda n'est pas installe sur cette machine." "Cogify a besoin de Conda pour installer GDAL (lecture/ecriture des fichiers geo). Telechargement de Miniconda en cours..."
+            Set-Status "Conda n'est pas installe sur cette machine." "Cogify a besoin de Conda pour installer GDAL (lecture/ecriture des fichiers geo)."
+
+            $progress.Style = "Continuous"
+            $progress.Value = 0
 
             $installer = "$env:TEMP\miniconda_installer.exe"
-            $job = Start-Job -ScriptBlock {
-                param($installer)
-                Invoke-WebRequest -UseBasicParsing -Uri "https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe" -OutFile $installer
-            } -ArgumentList $installer
-            Wait-Job-Responsive $job | Out-Null
-            $jobFailed = $job.State -eq "Failed"
-            Remove-Job -Job $job -ErrorAction SilentlyContinue
+            $uri = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe"
 
-            if ($jobFailed -or -not (Test-Path $installer)) {
-                Show-Error "Le telechargement de Miniconda a echoue.`nVerifiez votre connexion internet."
+            $webClient = New-Object System.Net.WebClient
+            $downloadComplete = $false
+            $downloadError = $null
+
+            Register-ObjectEvent -InputObject $webClient -EventName DownloadProgressChanged -SourceIdentifier WebClientProgress | Out-Null
+            Register-ObjectEvent -InputObject $webClient -EventName DownloadFileCompleted -SourceIdentifier WebClientCompleted | Out-Null
+
+            try {
+                $webClient.DownloadFileAsync([Uri]$uri, $installer)
+
+                while (-not $downloadComplete) {
+                    Start-Sleep -Milliseconds 100
+                    [System.Windows.Forms.Application]::DoEvents()
+
+                    $progressEvent = Get-Event -SourceIdentifier WebClientProgress -ErrorAction SilentlyContinue
+                    if ($progressEvent) {
+                        $pct = $progressEvent.SourceEventArgs.ProgressPercentage
+                        $progress.Value = $pct
+                        $detail.Text = "Telechargement de Miniconda en cours... $pct%"
+                        Remove-Event -SourceIdentifier WebClientProgress -ErrorAction SilentlyContinue
+                    }
+
+                    $completedEvent = Get-Event -SourceIdentifier WebClientCompleted -ErrorAction SilentlyContinue
+                    if ($completedEvent) {
+                        if ($completedEvent.SourceEventArgs.Error) {
+                            $downloadError = $completedEvent.SourceEventArgs.Error
+                        }
+                        $downloadComplete = $true
+                        Remove-Event -SourceIdentifier WebClientCompleted -ErrorAction SilentlyContinue
+                    }
+                }
+            } finally {
+                Unregister-Event -SourceIdentifier WebClientProgress -ErrorAction SilentlyContinue
+                Unregister-Event -SourceIdentifier WebClientCompleted -ErrorAction SilentlyContinue
+                $webClient.Dispose()
+            }
+
+            $progress.Style = "Marquee"
+
+            if ($downloadError -or -not (Test-Path $installer)) {
+                Show-Error "Le telechargement de Miniconda a echoue.`nVerifiez votre connexion internet.`n`n$downloadError"
             }
 
             Set-Status "Installation de Miniconda..." "Installation silencieuse de Miniconda (gestionnaire d'environnements Python) dans $env:USERPROFILE\miniconda3."
@@ -145,6 +181,7 @@ $form.Add_Shown({
 })
 
 [void]$form.ShowDialog()
+
 
 
 
