@@ -20,7 +20,7 @@ if not defined CONDA_BAT (
     echo.
 
     set MINICONDA_EXE=%TEMP%\miniconda_installer.exe
-    powershell -NoProfile -Command "Invoke-WebRequest -Uri 'https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe' -OutFile '%MINICONDA_EXE%'"
+    powershell -NoProfile -Command "Invoke-WebRequest -UseBasicParsing -Uri 'https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe' -OutFile '%MINICONDA_EXE%'"
 
     if not exist "%MINICONDA_EXE%" (
         echo ERREUR : le telechargement de Miniconda a echoue.
