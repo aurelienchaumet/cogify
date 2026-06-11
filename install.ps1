@@ -95,10 +95,10 @@ $form.Add_Shown({
                     Start-Sleep -Milliseconds 100
                     [System.Windows.Forms.Application]::DoEvents()
 
-                    $progressEvent = Get-Event -SourceIdentifier WebClientProgress -ErrorAction SilentlyContinue
-                    if ($progressEvent) {
-                        $pct = $progressEvent.SourceEventArgs.ProgressPercentage
-                        $progress.Value = $pct
+                    $progressEvents = @(Get-Event -SourceIdentifier WebClientProgress -ErrorAction SilentlyContinue)
+                    if ($progressEvents.Count -gt 0) {
+                        $pct = $progressEvents[-1].SourceEventArgs.ProgressPercentage
+                        $progress.Value = [int]$pct
                         $detail.Text = "Telechargement de Miniconda en cours... $pct%"
                         Remove-Event -SourceIdentifier WebClientProgress -ErrorAction SilentlyContinue
                     }
@@ -182,6 +182,7 @@ $form.Add_Shown({
 })
 
 [void]$form.ShowDialog()
+
 
 
 
